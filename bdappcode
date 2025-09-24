@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bob Dylan Discography</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(255, 255, 255, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+
+    <div id="loading-spinner" class="loading-overlay hidden">
+        <div class="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-blue-500"></div>
+    </div>
+
+    <div id="app" class="bg-white rounded-xl shadow-2xl p-6 md:p-8 w-full max-w-4xl mx-auto">
+
+        <!-- Header -->
+        <header class="text-center mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-800 mb-2">Bob Dylan Discography</h1>
+            <p class="text-gray-500">Rate and comment on your favorite tracks.</p>
+        </header>
+
+        <!-- Main Content Area -->
+        <main id="main-content">
+            <!-- Albums List View -->
+            <div id="album-list-view">
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <!-- Album cards will be dynamically inserted here -->
+                </div>
+            </div>
+
+            <!-- Track List View -->
+            <div id="track-list-view" class="hidden">
+                <button onclick="showAlbums()" class="mb-6 flex items-center text-blue-600 hover:text-blue-800 font-semibold">
+                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+                    </svg>
+                    Back to Albums
+                </button>
+                <div class="flex items-center justify-between mb-4">
+                    <h2 id="album-title" class="text-2xl font-bold text-gray-800"></h2>
+                    <div id="album-average-rating" class="text-xl font-semibold text-blue-600"></div>
+                </div>
+                <div id="song-list" class="space-y-4">
+                    <!-- Song list and rating/comment sections will be dynamically inserted here -->
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal for messages and prompts -->
+    <div id="modal-backdrop" class="fixed inset-0 bg-gray-900 bg-opacity-50 hidden items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-lg shadow-xl p-6 w-full max-w-sm">
+            <h3 id="modal-title" class="text-lg font-bold text-gray-800 mb-2"></h3>
+            <p id="modal-message" class="text-gray-600 mb-4"></p>
+            <div class="flex justify-end space-x-2">
+                <button id="modal-cancel-btn" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300">Cancel</button>
+                <button id="modal-confirm-btn" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import {
+            initializeApp
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import {
+            getAuth,
+            signInAnonymously,
+            signInWithCustomToken,
+            onAuthStateChanged
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import {
+            getFirestore,
+            collection,
+            doc,
+            getDocs,
+            onSnapshot,
+            addDoc,
+            query,
+            setDoc,
+            getDoc,
+            setLogLevel
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Firebase global variables
+        let app, db, auth, userId;
+        let authReady = false;
+
+        // Configuration and App ID
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        // Data source (simplified for this example)
+        const dylanDiscography = [{
+            "id": "1",
+            "title": "The Freewheelin' Bob Dylan",
+            "year": 1963,
+            "art": "https://upload.wikimedia.org/wikipedia/en/thumb/9/90/Bob_Dylan_-_The_Freewheelin%27_Bob_Dylan.jpg/220px-Bob_Dylan_-_The_Freewheelin%27_Bob_Dylan.jpg",
+            "songs": [
+                "Blowin' in the Wind", "Girl from the North Country", "Masters of War", "Down the Highway",
+                "Bob Dylan's Blues", "A Hard Rain's a-Gonna Fall", "Don't Think Twice, It's All Right",
+                "Bob Dylan's Dream", "Oxford Town", "Talkin' World War III Blues", "Corrina, Corrina",
+                "Honey, Just Allow Me One More Chance", "I Shall Be Free"
+            ]
+        }, {
+            "id": "2",
+            "title": "Highway 61 Revisited",
+            "year": 1965,
+            "art": "https://upload.wikimedia.org/wikipedia/en/thumb/9/90/Bob_Dylan_-_Highway_61_Revisited.jpg/220px-Bob_Dylan_-_Highway_61_Revisited.jpg",
+            "songs": [
+                "Like a Rolling Stone", "Tombstone Blues", "It Takes a Lot to Laugh, It Takes a Train to Cry",
+                "From a Buick 6", "Ballad of a Thin Man", "Queen Jane Approximately",
+                "Highway 61 Revisited", "Just Like Tom Thumb's Blues", "Desolation Row"
+            ]
+        }, {
+            "id": "3",
+            "title": "Blood on the Tracks",
+            "year": 1975,
+            "art": "https://upload.wikimedia.org/wikipedia/en/thumb/8/82/Bob_Dylan_-_Blood_on_the_Tracks.jpg/220px-Bob_Dylan_-_Blood_on_the_Tracks.jpg",
+            "songs": [
+                "Tangled Up in Blue", "Simple Twist of Fate", "You're a Big Girl Now", "Idiot Wind", "You're Gonna Make Me Lonesome When You Go",
+                "Meet Me in the Morning", "Lily, Rosemary and the Jack of Hearts", "If You See Her, Say Hello",
+                "Shelter from the Storm", "Buckets of Rain"
+            ]
+        }];
+
+        const showSpinner = (show) => {
+            document.getElementById('loading-spinner').classList.toggle('hidden', !show);
+        };
+
+        const showModal = (title, message, isConfirm = false, onConfirm = null) => {
+            const backdrop = document.getElementById('modal-backdrop');
+            const modalTitle = document.getElementById('modal-title');
+            const modalMessage = document.getElementById('modal-message');
+            const confirmBtn = document.getElementById('modal-confirm-btn');
+            const cancelBtn = document.getElementById('modal-cancel-btn');
+
+            modalTitle.textContent = title;
+            modalMessage.textContent = message;
+            backdrop.classList.remove('hidden');
+            backdrop.classList.add('flex');
+
+            confirmBtn.style.display = isConfirm ? 'inline-block' : 'none';
+            cancelBtn.style.display = isConfirm ? 'inline-block' : 'none';
+
+            return new Promise((resolve) => {
+                const handleConfirm = () => {
+                    backdrop.classList.remove('flex');
+                    backdrop.classList.add('hidden');
+                    resolve(true);
+                    confirmBtn.removeEventListener('click', handleConfirm);
+                    cancelBtn.removeEventListener('click', handleCancel);
+                    if (onConfirm) onConfirm();
+                };
+
+                const handleCancel = () => {
+                    backdrop.classList.remove('flex');
+                    backdrop.classList.add('hidden');
+                    resolve(false);
+                    confirmBtn.removeEventListener('click', handleConfirm);
+                    cancelBtn.removeEventListener('click', handleCancel);
+                };
+
+                confirmBtn.addEventListener('click', handleConfirm);
+                cancelBtn.addEventListener('click', handleCancel);
+            });
+        };
+
+        const initializeFirebase = async () => {
+            try {
+                showSpinner(true);
+                setLogLevel('debug');
+                app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+
+                // Set up auth state listener
+                onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        console.log("User signed in with UID:", userId);
+                        authReady = true;
+                        renderAlbums();
+                    } else {
+                        // User is signed out. Sign in anonymously if no token is available.
+                        console.log("No user signed in. Attempting anonymous sign-in.");
+                        try {
+                            if (initialAuthToken) {
+                                await signInWithCustomToken(auth, initialAuthToken);
+                            } else {
+                                await signInAnonymously(auth);
+                            }
+                        } catch (error) {
+                            console.error("Firebase Auth Error:", error);
+                            showModal('Authentication Error', 'Failed to authenticate with Firebase. Please try again later.');
+                        }
+                    }
+                    showSpinner(false);
+                });
+            } catch (error) {
+                console.error("Firebase Initialization Error:", error);
+                showSpinner(false);
+                showModal('Initialization Error', 'Failed to initialize the application. Please check the console for details.');
+            }
+        };
+
+        const renderAlbums = () => {
+            const container = document.querySelector('#album-list-view .grid');
+            container.innerHTML = '';
+            dylanDiscography.forEach(album => {
+                const albumCard = document.createElement('div');
+                albumCard.className = "album-card bg-gray-200 rounded-lg p-4 shadow-md hover:shadow-lg transition-shadow duration-300 cursor-pointer flex flex-col items-center text-center";
+                albumCard.onclick = () => showAlbumTracks(album);
+                albumCard.innerHTML = `
+                    <img src="${album.art}" alt="${album.title} album art" class="w-32 h-32 rounded-lg mb-4 object-cover">
+                    <h3 class="text-lg font-semibold text-gray-800">${album.title}</h3>
+                    <p class="text-sm text-gray-500">${album.year}</p>
+                `;
+                container.appendChild(albumCard);
+            });
+            document.getElementById('album-list-view').classList.remove('hidden');
+            document.getElementById('track-list-view').classList.add('hidden');
+        };
+
+        const showAlbumTracks = async (album) => {
+            document.getElementById('album-list-view').classList.add('hidden');
+            document.getElementById('track-list-view').classList.remove('hidden');
+            document.getElementById('album-title').textContent = album.title;
+            const songListContainer = document.getElementById('song-list');
+            songListContainer.innerHTML = '';
+
+            const albumRatingsRef = collection(db, `artifacts/${appId}/public/data/albums/${album.id}/ratings`);
+            const albumCommentsRef = collection(db, `artifacts/${appId}/public/data/albums/${album.id}/comments`);
+
+            onSnapshot(albumRatingsRef, async (snapshot) => {
+                const songRatings = {};
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    if (!songRatings[data.songId]) {
+                        songRatings[data.songId] = {
+                            totalScore: 0,
+                            count: 0
+                        };
+                    }
+                    songRatings[data.songId].totalScore += data.score;
+                    songRatings[data.songId].count++;
+                });
+
+                const calculateAverage = (songId) => {
+                    const ratings = songRatings[songId];
+                    if (ratings && ratings.count > 0) {
+                        return (ratings.totalScore / ratings.count).toFixed(2);
+                    }
+                    return "N/A";
+                };
+
+                const calculateAlbumAverage = () => {
+                    let totalAlbumScore = 0;
+                    let totalRatingsCount = 0;
+                    album.songs.forEach(songTitle => {
+                        const songId = `${album.id}-${songTitle.replace(/\s+/g, '-')}`;
+                        if (songRatings[songId]) {
+                            totalAlbumScore += songRatings[songId].totalScore;
+                            totalRatingsCount += songRatings[songId].count;
+                        }
+                    });
+                    if (totalRatingsCount > 0) {
+                        return (totalAlbumScore / totalRatingsCount).toFixed(2);
+                    }
+                    return "N/A";
+                };
+
+                const albumAvg = calculateAlbumAverage();
+                document.getElementById('album-average-rating').textContent = `Album Avg: ${albumAvg}`;
+
+                songListContainer.innerHTML = '';
+                const commentsMap = await fetchComments(album.id);
+
+                album.songs.forEach((songTitle, index) => {
+                    const songId = `${album.id}-${songTitle.replace(/\s+/g, '-')}`;
+                    const avgRating = calculateAverage(songId);
+                    const commentsForSong = commentsMap[songId] || [];
+
+                    const songItem = document.createElement('div');
+                    songItem.className = "bg-gray-50 rounded-lg p-4 shadow-inner";
+                    songItem.innerHTML = `
+                        <div class="flex items-center justify-between mb-2">
+                            <h3 class="text-lg font-semibold text-gray-700">${index + 1}. ${songTitle}</h3>
+                            <span class="text-md font-bold text-gray-600">Avg: ${avgRating}</span>
+                        </div>
+                        
+                        <!-- Rating Section -->
+                        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between mt-2 space-y-2 sm:space-y-0 sm:space-x-4">
+                            <div class="flex items-center space-x-2 w-full sm:w-auto">
+                                <label for="rating-${songId}" class="text-gray-600 font-medium whitespace-nowrap">Your Rating (1-10):</label>
+                                <select id="rating-${songId}" class="flex-grow w-full sm:w-auto px-2 py-1 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                    <option value="">Select</option>
+                                    ${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(s => `<option value="${s}">${s}</option>`).join('')}
+                                </select>
+                                <button onclick="saveRating('${album.id}', '${songId}')" class="px-3 py-1 bg-blue-500 text-white text-sm font-semibold rounded-lg hover:bg-blue-600 transition-colors duration-200">Rate</button>
+                            </div>
+                        </div>
+
+                        <!-- Comments Section -->
+                        <div class="mt-4 border-t pt-4 border-gray-200">
+                            <h4 class="text-md font-bold text-gray-700 mb-2">Comments</h4>
+                            <div id="comments-${songId}" class="space-y-2">
+                                ${commentsForSong.length > 0 ? commentsForSong.map(c => `
+                                    <div class="bg-gray-100 p-2 rounded-md text-sm text-gray-800">
+                                        <p class="font-semibold text-blue-700 mb-1">User: <span class="text-xs text-gray-500">${c.userId.substring(0, 8)}...</span></p>
+                                        <p>${c.comment}</p>
+                                    </div>
+                                `).join('') : '<p class="text-gray-500 text-sm">No comments yet. Be the first!</p>'}
+                            </div>
+                            <div class="mt-4 flex space-x-2">
+                                <input type="text" id="comment-input-${songId}" placeholder="Leave a comment..." class="flex-grow px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <button onclick="saveComment('${album.id}', '${songId}')" class="px-4 py-2 bg-green-500 text-white text-sm font-semibold rounded-lg hover:bg-green-600 transition-colors duration-200">Comment</button>
+                            </div>
+                        </div>
+                    `;
+                    songListContainer.appendChild(songItem);
+                });
+            });
+        };
+
+        const fetchComments = async (albumId) => {
+            const commentsMap = {};
+            const commentsRef = collection(db, `artifacts/${appId}/public/data/albums/${albumId}/comments`);
+            const snapshot = await getDocs(commentsRef);
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                if (!commentsMap[data.songId]) {
+                    commentsMap[data.songId] = [];
+                }
+                commentsMap[data.songId].push(data);
+            });
+            return commentsMap;
+        };
+
+        const saveRating = async (albumId, songId) => {
+            const ratingInput = document.getElementById(`rating-${songId}`);
+            const score = parseInt(ratingInput.value, 10);
+            if (!score || score < 1 || score > 10) {
+                showModal('Invalid Rating', 'Please select a valid rating between 1 and 10.');
+                return;
+            }
+
+            try {
+                showSpinner(true);
+                const ratingRef = doc(db, `artifacts/${appId}/public/data/albums/${albumId}/ratings/${songId}-${userId}`);
+                await setDoc(ratingRef, {
+                    songId: songId,
+                    userId: userId,
+                    score: score,
+                    timestamp: new Date()
+                });
+            } catch (error) {
+                console.error("Error saving rating:", error);
+                showModal('Error', 'Failed to save your rating. Please try again.');
+            } finally {
+                showSpinner(false);
+            }
+        };
+
+        const saveComment = async (albumId, songId) => {
+            const commentInput = document.getElementById(`comment-input-${songId}`);
+            const comment = commentInput.value.trim();
+            if (comment === '') {
+                showModal('Empty Comment', 'Please write something before submitting.');
+                return;
+            }
+
+            try {
+                showSpinner(true);
+                const commentsRef = collection(db, `artifacts/${appId}/public/data/albums/${albumId}/comments`);
+                await addDoc(commentsRef, {
+                    songId: songId,
+                    userId: userId,
+                    comment: comment,
+                    timestamp: new Date()
+                });
+                commentInput.value = ''; // Clear input field
+            } catch (error) {
+                console.error("Error saving comment:", error);
+                showModal('Error', 'Failed to save your comment. Please try again.');
+            } finally {
+                showSpinner(false);
+            }
+        };
+
+        const showAlbums = () => {
+            document.getElementById('album-list-view').classList.remove('hidden');
+            document.getElementById('track-list-view').classList.add('hidden');
+        };
+
+        // Expose functions to the global scope for event handlers
+        window.showAlbums = showAlbums;
+        window.showAlbumTracks = showAlbumTracks;
+        window.saveRating = saveRating;
+        window.saveComment = saveComment;
+        window.showModal = showModal;
+
+        window.onload = () => {
+            initializeFirebase();
+        };
+    </script>
+</body>
+
+</html>
