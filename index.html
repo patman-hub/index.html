@@ -114,7 +114,14 @@
         let authReady = false;
 
         // Configuration and App ID
-        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const firebaseConfig = {
+            apiKey: "AIzaSyCkODpsc78u2Tw9m-5Vp1GfYayCsjJz_WI",
+            authDomain: "bdapp-460df.firebaseapp.com",
+            projectId: "bdapp-460df",
+            storageBucket: "bdapp-460df.firebasestorage.app",
+            messagingSenderId: "200466737852",
+            appId: "1:200466737852:web:d217c08b797ca87d4afeb9"
+        };
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
@@ -200,7 +207,7 @@
                 setLogLevel('debug');
                 
                 // Add a check to ensure firebaseConfig is not empty
-                if (Object.keys(firebaseConfig).length === 0) {
+                if (Object.keys(firebaseConfig).length === 0 || firebaseConfig.apiKey === "YOUR_API_KEY") {
                     throw new Error("Firebase configuration is missing. Please ensure it's provided.");
                 }
 
