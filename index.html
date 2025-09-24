@@ -198,6 +198,12 @@
             try {
                 showSpinner(true);
                 setLogLevel('debug');
+                
+                // Add a check to ensure firebaseConfig is not empty
+                if (Object.keys(firebaseConfig).length === 0) {
+                    throw new Error("Firebase configuration is missing. Please ensure it's provided.");
+                }
+
                 app = initializeApp(firebaseConfig);
                 auth = getAuth(app);
                 db = getFirestore(app);
